@@ -1,0 +1,156 @@
+---
+title: "pml"
+author: "arun"
+date: "June 21, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+
+
+
+library(caret)
+library(dplyr)
+library(RCurl)
+library(gridExtra)
+library(corrplot)
+
+
+
+
+
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+
+dim(training)
+
+
+## [1] 19622   160
+
+dim(testing)
+
+
+## [1]  20 160
+Choosing Predictor Variables
+Because of the number of variables (160, the model was taking too long to build and so we decided to use the data that had complete data. These included belt, arm, dumbbell and forearms)
+
+For more information about the dataset go here >> http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201
+
+Here are the predictor variables selected
+
+
+removeMissingData <- sapply(testing, function (x) any(is.na(x) | x == ""))
+definingPredictorVariables <- !removeMissingData & grepl("belt|[^(fore)]arm|dumbbell|forearm", names(removeMissingData))
+PredictorVariables <- names(removeMissingData)[definingPredictorVariables]
+
+
+
+
+PredictorVariables
+##  [1] "roll_belt"            "pitch_belt"           "yaw_belt"            
+##  [4] "total_accel_belt"     "gyros_belt_x"         "gyros_belt_y"        
+##  [7] "gyros_belt_z"         "accel_belt_x"         "accel_belt_y"        
+## [10] "accel_belt_z"         "magnet_belt_x"        "magnet_belt_y"       
+## [13] "magnet_belt_z"        "roll_arm"             "pitch_arm"           
+## [16] "yaw_arm"              "total_accel_arm"      "gyros_arm_x"         
+## [19] "gyros_arm_y"          "gyros_arm_z"          "accel_arm_x"         
+## [22] "accel_arm_y"          "accel_arm_z"          "magnet_arm_x"        
+## [25] "magnet_arm_y"         "magnet_arm_z"         "roll_dumbbell"       
+## [28] "pitch_dumbbell"       "yaw_dumbbell"         "total_accel_dumbbell"
+## [31] "gyros_dumbbell_x"     "gyros_dumbbell_y"     "gyros_dumbbell_z"    
+## [34] "accel_dumbbell_x"     "accel_dumbbell_y"     "accel_dumbbell_z"    
+## [37] "magnet_dumbbell_x"    "magnet_dumbbell_y"    "magnet_dumbbell_z"   
+## [40] "roll_forearm"         "pitch_forearm"        "yaw_forearm"         
+## [43] "total_accel_forearm"  "gyros_forearm_x"      "gyros_forearm_y"     
+## [46] "gyros_forearm_z"      "accel_forearm_x"      "accel_forearm_y"     
+## [49] "accel_forearm_z"      "magnet_forearm_x"     "magnet_forearm_y"    
+## [52] "magnet_forearm_z"
+
+
+We have reduced the variables to analyze significantly.
+
+
+
+onlyPredictors <- c("classe", PredictorVariables)
+training <- training[, onlyPredictors]
+dim(training)
+
+
+
+## [1] 19622    53
+
+
+
+Build the model
+The model uses k-mode cross validation and is run 3 times on 10-fold data starting with 70% of the data for training and 30% for validating the model.
+
+
+
+Below the accuracy will test the prediction accuracy derived from the training data against the validation data
+
+
+
+nuFoldData <- 10
+nuRepeats <- 3
+testDataSize <- 0.7
+base <- read.csv("data/pml-training.csv")
+tempTraining <- createDataPartition(base$classe, p = testDataSize, list = FALSE)
+training <- base[tempTraining,]
+validation <- base[-tempTraining,]
+
+
+
+
+#Using all variables
+
+
+
+tempTrControl <- trainControl(method = "repeatedcv", number = nuFoldData, repeats = nuRepeats)
+trainedModel <- train(classe ~ ., data = training[,c("classe", "roll_belt","roll_arm", "roll_dumbbell", "roll_forearm", "pitch_belt", "pitch_arm", "pitch_dumbbell", "pitch_forearm", "yaw_belt", "yaw_arm", "yaw_dumbbell", "yaw_forearm")],
+                      method = "rf", ntree = nuFoldData, trControl = tempTrControl)
+
+confusionMatrix(trainedModel, newdata = predict(trainedModel, newdata = validation))
+
+
+
+
+## Cross-Validated (10 fold, repeated 3 times) Confusion Matrix 
+## (entries are percentual average cell counts across resamples)
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 28.2  0.2  0.0  0.0  0.0
+##          B  0.2 18.7  0.2  0.0  0.1
+##          C  0.0  0.3 17.0  0.2  0.1
+##          D  0.0  0.1  0.2 16.1  0.1
+##          E  0.0  0.0  0.0  0.1 18.1
+##                           
+##  Accuracy (average) : 0.98
+
+
+
+
+Predicting events using testing data
+Let’s test our data using the test data given above
+nuPredictions <- 20
+finalData <- rep(NA, nuPredictions)
+for(i in 1:nuPredictions){
+  tmpID <- filter(testing, problem_id == i)
+  finalData[i] <- as.vector(predict(trainedModel, newdata = tmpID))
+}
+finalData
+
+
+
+##  [1] "B" "A" "B" "A" "A" "E" "D" "B" "A" "A" "B" "C" "B" "A" "E" "E" "A"
+## [18] "B" "B" "B"
